@@ -6,7 +6,8 @@ export const transformImage = async (
   base64Image: string,
   params: GenerationParams
 ): Promise<GeneratedResult> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  // Use process.env.API_KEY directly without modification as per @google/genai coding guidelines.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   let themeContext = "";
   if (params.randomizeTheme) {

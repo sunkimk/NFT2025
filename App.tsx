@@ -1,8 +1,19 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { GenerationParams, AvatarStyle, Accessory, Clothing, Background, GeneratedResult } from './types';
 import { transformImage } from './services/geminiService';
 import ControlPanel from './components/ControlPanel';
+
+// Fix: Redefine the global AIStudio interface and extend the Window object correctly
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+  interface Window {
+    aistudio: AIStudio;
+  }
+}
 
 const App: React.FC = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -10,6 +21,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
+  const [hasKey, setHasKey] = useState<boolean>(false);
   
   const isCancelledRef = useRef(false);
   
@@ -26,6 +38,24 @@ const App: React.FC = () => {
   };
 
   const [params, setParams] = useState<GenerationParams>(initialParams);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleOpenKeyDialog = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      // According to guidelines, assume selection was successful after triggering the dialog.
+      setHasKey(true);
+    }
+  };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -59,7 +89,15 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       if (!isCancelledRef.current) {
-        setError(err.message || '铸造过程中发生错误。');
+        const errorMsg = err.message || '铸造过程中发生错误。';
+        setError(errorMsg);
+        
+        // If the request fails with this specific message, prompt for key selection again.
+        if (errorMsg.includes("Requested entity was not found.")) {
+          setHasKey(false);
+          setError("API Key 已失效或未找到。请重新点击右上角按钮进行配置。");
+          handleOpenKeyDialog();
+        }
       }
     } finally {
       if (!isCancelledRef.current) {
@@ -201,11 +239,27 @@ const App: React.FC = () => {
           <span className="font-black text-sm tracking-[0.2em] uppercase">NFT Crafter</span>
         </div>
         
-        <div className="ml-auto flex items-center gap-6">
-          <div className="hidden md:flex gap-6 text-[11px] font-bold text-appGray tracking-widest uppercase">
+        <div className="ml-auto flex items-center gap-4 lg:gap-8">
+          <div className="hidden md:flex gap-6 text-[11px] font-bold text-appGray tracking-widest uppercase items-center">
+            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="hover:text-accentGreen transition-colors text-[9px] opacity-60">计费说明</a>
             <a href="#" className="hover:text-white transition-colors">画廊</a>
-            <a href="#" className="text-accentGreen">创作者中心</a>
+            <a href="#" className="text-white">创作者中心</a>
           </div>
+
+          {/* API Key 配置按钮 */}
+          <button 
+            onClick={handleOpenKeyDialog}
+            className={`px-4 py-2 border rounded-sm text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+              hasKey 
+                ? 'bg-white/5 border-accentGreen/30 text-accentGreen' 
+                : 'bg-accentGreen text-black border-accentGreen shadow-[0_0_20px_rgba(198,255,51,0.2)] hover:scale-105'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+               <path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {hasKey ? 'API KEY 已配置' : '配置 API KEY'}
+          </button>
         </div>
       </nav>
 
@@ -345,7 +399,7 @@ const App: React.FC = () => {
                       </svg>
                     </div>
                     <div className="text-center">
-                      <p className="text-appGray text-xs font-black uppercase tracking-[0.3em] leading-loose">准备就绪</p>
+                      <p className="text-appGray text-xs font-black uppercase tracking-[0.3em] font-black">准备就绪</p>
                       <p className="text-appGray/40 text-[10px] uppercase mt-2">选择您心仪的艺术次元开始创作</p>
                     </div>
                   </div>
