@@ -1,0 +1,7 @@
+{
+  "name": "NFT Avatar Crafter",
+  "description": "Transform any character image into a stylized 3D NFT avatar with customizable accessories, styles, and backgrounds using Gemini AI.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
