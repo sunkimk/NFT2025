@@ -9,6 +9,7 @@ export enum AvatarStyle {
   ANIME_TRENDY = '日系潮流二次元 (Anime)',
   VECTOR_FLAT = '极简矢量扁平 (Vector)',
   PIXEL_ART = '复古 8-Bit 像素 (Pixel)',
+  RETRO_DITHERED = '复古 1-Bit 抖动 (Retro Dithered)',
   SKETCH_LINEART = '手绘线条速写 (Sketch)',
   OIL_PAINTING = '厚涂古典油画 (Oil Painting)',
   POP_ART = '波普艺术拼贴 (Pop Art)'
@@ -30,6 +31,7 @@ export enum Accessory {
 }
 
 export enum Clothing {
+  NONE = '无 (None)',
   HOODIE = '运动卫衣 (Hoodie)',
   JACKET = '机车皮夹克 (Jacket)',
   SWEATER = '复古毛衣 (Sweater)',

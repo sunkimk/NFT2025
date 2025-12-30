@@ -1,17 +1,17 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { GenerationParams, AvatarStyle, Accessory, Clothing, Background, GeneratedResult } from './types';
 import { transformImage } from './services/geminiService';
 import ControlPanel from './components/ControlPanel';
 
-// Fix: Redefine the global AIStudio interface and extend the Window object correctly
+// 定义全局 aistudio 接口
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
   interface Window {
-    aistudio: AIStudio;
+    // Make aistudio optional to match potential ambient declarations and avoid modifier mismatch error
+    aistudio?: AIStudio;
   }
 }
 
@@ -52,7 +52,7 @@ const App: React.FC = () => {
   const handleOpenKeyDialog = async () => {
     if (window.aistudio) {
       await window.aistudio.openSelectKey();
-      // According to guidelines, assume selection was successful after triggering the dialog.
+      // 触发后假设成功并继续
       setHasKey(true);
     }
   };
@@ -92,7 +92,7 @@ const App: React.FC = () => {
         const errorMsg = err.message || '铸造过程中发生错误。';
         setError(errorMsg);
         
-        // If the request fails with this specific message, prompt for key selection again.
+        // 如果 API 请求失败并提示 entity not found，提示重新连接
         if (errorMsg.includes("Requested entity was not found.")) {
           setHasKey(false);
           setError("API Key 已失效或未找到。请重新点击右上角按钮进行配置。");
@@ -145,7 +145,7 @@ const App: React.FC = () => {
   const seriesMetadata = results.length > 0 ? results[0] : null;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col selection:bg-accentGreen selection:text-black">
       {/* 全屏放大预览 Modal */}
       {zoomIndex !== null && results[zoomIndex] && (
         <div 
@@ -234,18 +234,12 @@ const App: React.FC = () => {
       <nav className="h-16 border-b border-appBorder bg-appDark flex items-center px-8 sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-accentGreen flex items-center justify-center rounded-sm">
-            <span className="text-black font-black text-[10px]">NC</span>
+            <span className="text-black font-black text-[10px]">AG</span>
           </div>
-          <span className="font-black text-sm tracking-[0.2em] uppercase">NFT Crafter</span>
+          <span className="font-black text-sm tracking-[0.2em] uppercase">AI NFT Generator</span>
         </div>
         
-        <div className="ml-auto flex items-center gap-4 lg:gap-8">
-          <div className="hidden md:flex gap-6 text-[11px] font-bold text-appGray tracking-widest uppercase items-center">
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="hover:text-accentGreen transition-colors text-[9px] opacity-60">计费说明</a>
-            <a href="#" className="hover:text-white transition-colors">画廊</a>
-            <a href="#" className="text-white">创作者中心</a>
-          </div>
-
+        <div className="ml-auto flex items-center">
           {/* API Key 配置按钮 */}
           <button 
             onClick={handleOpenKeyDialog}
@@ -258,7 +252,7 @@ const App: React.FC = () => {
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                <path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            {hasKey ? 'API KEY 已配置' : '配置 API KEY'}
+            {hasKey ? 'API 已成功连接' : '连接 Gemini API Key'}
           </button>
         </div>
       </nav>
@@ -266,8 +260,7 @@ const App: React.FC = () => {
       <main className="flex-1 max-w-[1500px] mx-auto w-full p-8 lg:p-12">
         <div className="mb-16 max-w-4xl">
           <div className="flex gap-2 mb-6">
-            <span className="bg-white/5 text-accentGreen text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest border border-accentGreen/20">AI 跨维联想</span>
-            <span className="bg-white/5 text-appGray text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest border border-appBorder">v2.5 FLASH PRO</span>
+            <span className="bg-white/5 text-accentGreen text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest border border-accentGreen/20">AI 跨维重塑</span>
           </div>
           <h1 className="text-5xl lg:text-7xl font-black mb-8 leading-[1.1] tracking-tighter uppercase italic">
             打破次元 <span className="text-accentGreen">重塑艺术</span><br/>铸造多元艺术 NFT
@@ -432,7 +425,7 @@ const App: React.FC = () => {
             )}
 
             <div className="bg-appCard border border-appBorder rounded-lg p-6 lg:p-8">
-              <h3 className="text-[10px] font-black text-appGray uppercase tracking-[0.2em] mb-6 italic border-b border-appBorder pb-3">NFT CRAFTER 核心优势</h3>
+              <h3 className="text-[10px] font-black text-appGray uppercase tracking-[0.2em] mb-6 italic border-b border-appBorder pb-3">AI NFT Generator 核心优势</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <div className="w-1.5 h-1.5 bg-accentGreen rounded-full mb-3"></div>
@@ -464,11 +457,7 @@ const App: React.FC = () => {
       <footer className="mt-20 border-t border-appBorder py-12 px-8 bg-black">
         <div className="max-w-[1400px] mx-auto flex flex-col items-center justify-center gap-4">
           <div className="flex flex-col md:flex-row items-center gap-4">
-            <span className="text-appGray text-[10px] font-black uppercase tracking-widest text-center">© 2024 NFT Crafter Studio</span>
-            <div className="hidden md:block h-4 w-[1px] bg-appBorder"></div>
-            <span className="text-appGray text-[10px] font-black uppercase tracking-widest text-center">Powered by Gemini AI Engine</span>
-            <div className="hidden md:block h-4 w-[1px] bg-appBorder"></div>
-            <span className="text-appGray text-[10px] font-black uppercase tracking-widest text-center">Design by Sunkim</span>
+            <span className="text-appGray text-[10px] font-black uppercase tracking-widest text-center">© 2024 Sunkim</span>
           </div>
         </div>
       </footer>
