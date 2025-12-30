@@ -262,8 +262,9 @@ const App: React.FC = () => {
           <div className="flex gap-2 mb-6">
             <span className="bg-white/5 text-accentGreen text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest border border-accentGreen/20">AI 跨维重塑</span>
           </div>
-          <h1 className="text-5xl lg:text-7xl font-black mb-8 leading-[1.1] tracking-tighter uppercase italic">
-            打破次元 <span className="text-accentGreen">重塑艺术</span><br/>铸造多元艺术 NFT
+          <h1 className="text-5xl lg:text-7xl font-black mb-8 leading-[1.3] tracking-tighter uppercase italic">
+            打破次元 <span className="text-accentGreen">重塑艺术</span><br/>
+            铸造 <span className="bg-accentGreen text-black px-2 lg:px-4 py-1 inline-block -mt-1 lg:-mt-2 italic">多元艺术 NFT</span>
           </h1>
           <p className="text-appGray text-lg max-w-2xl font-medium leading-relaxed">
             支持 2D 矢量、二次元、像素及 3D 渲染等多种艺术风格。输入关键词，AI 将自动跨越次元，为您重构极具收藏价值的数字资产。
