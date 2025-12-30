@@ -1,19 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GenerationParams, AvatarStyle, Accessory, Clothing, Background, GeneratedResult } from './types';
 import { transformImage } from './services/geminiService';
+import { saveToHistory, getAllHistory } from './services/dbService';
 import ControlPanel from './components/ControlPanel';
-
-// 定义全局 aistudio 接口
-declare global {
-  interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-  }
-  interface Window {
-    // Make aistudio optional to match potential ambient declarations and avoid modifier mismatch error
-    aistudio?: AIStudio;
-  }
-}
+import HistoryGallery from './components/HistoryGallery';
 
 const App: React.FC = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -21,7 +11,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
-  const [hasKey, setHasKey] = useState<boolean>(false);
+  const [currentExpectedCount, setCurrentExpectedCount] = useState(0);
+  const [showGallery, setShowGallery] = useState(false);
+  const [historyCount, setHistoryCount] = useState(0);
   
   const isCancelledRef = useRef(false);
   
@@ -39,23 +31,14 @@ const App: React.FC = () => {
 
   const [params, setParams] = useState<GenerationParams>(initialParams);
 
+  // 初始化加载历史数量
   useEffect(() => {
-    const checkKey = async () => {
-      if (window.aistudio) {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected);
-      }
+    const updateCount = async () => {
+      const items = await getAllHistory();
+      setHistoryCount(items.length);
     };
-    checkKey();
-  }, []);
-
-  const handleOpenKeyDialog = async () => {
-    if (window.aistudio) {
-      await window.aistudio.openSelectKey();
-      // 触发后假设成功并继续
-      setHasKey(true);
-    }
-  };
+    updateCount();
+  }, [showGallery, results]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -65,6 +48,7 @@ const App: React.FC = () => {
         setUploadedImage(reader.result as string);
         setResults([]);
         setError(null);
+        setCurrentExpectedCount(0);
       };
       reader.readAsDataURL(file);
     }
@@ -76,41 +60,39 @@ const App: React.FC = () => {
     setError(null);
     setResults([]);
     isCancelledRef.current = false;
+    setCurrentExpectedCount(params.quantity);
+
+    const totalCount = params.quantity;
+    let completedCount = 0;
+    let successCount = 0;
     
-    try {
-      const promises = Array.from({ length: params.quantity }).map(() => 
-        transformImage(uploadedImage, params)
-      );
-      
-      const res = await Promise.all(promises);
-      
-      if (!isCancelledRef.current) {
-        setResults(res);
-      }
-    } catch (err: any) {
-      if (!isCancelledRef.current) {
-        const errorMsg = err.message || '铸造过程中发生错误。';
-        setError(errorMsg);
-        
-        // 如果 API 请求失败并提示 entity not found，提示重新连接
-        if (errorMsg.includes("Requested entity was not found.")) {
-          setHasKey(false);
-          setError("API Key 已失效或未找到。请重新点击右上角按钮进行配置。");
-          handleOpenKeyDialog();
+    Array.from({ length: totalCount }).forEach(async (_, index) => {
+      try {
+        const res = await transformImage(uploadedImage, params, index, totalCount);
+        if (!isCancelledRef.current) {
+          setResults(prev => [...prev, res]);
+          successCount++;
+          // 自动保存到历史记录
+          await saveToHistory(res);
+        }
+      } catch (err: any) {
+        console.error(`Task ${index} failed:`, err);
+      } finally {
+        completedCount++;
+        if (completedCount === totalCount) {
+          setIsLoading(false);
+          if (successCount === 0 && !isCancelledRef.current) {
+            setError("铸造失败：模型未能生成图像，请尝试调整参数或重试。");
+          }
         }
       }
-    } finally {
-      if (!isCancelledRef.current) {
-        setIsLoading(false);
-      }
-    }
+    });
   };
 
   const handleStopTask = () => {
     isCancelledRef.current = true;
     setIsLoading(false);
-    setResults([]);
-    setError("生成任务已终止。");
+    setError("任务已由用户手动终止。");
   };
 
   const downloadImage = (url: string, e?: React.MouseEvent) => {
@@ -135,93 +117,85 @@ const App: React.FC = () => {
     }
   };
 
-  const getGridCols = (count: number) => {
-    if (count === 1) return 'grid-cols-1';
-    if (count <= 2) return 'grid-cols-2';
-    if (count <= 4) return 'grid-cols-2';
+  const getGridCols = () => {
+    const target = currentExpectedCount || params.quantity;
+    if (target === 1) return 'grid-cols-1';
+    if (target <= 2) return 'grid-cols-2';
+    if (target <= 4) return 'grid-cols-2';
     return 'grid-cols-3';
   };
 
-  const seriesMetadata = results.length > 0 ? results[0] : null;
-
   return (
-    <div className="min-h-screen flex flex-col selection:bg-accentGreen selection:text-black">
-      {/* 全屏放大预览 Modal */}
+    <div className="min-h-screen flex flex-col selection:bg-accentGreen selection:text-black bg-black">
+      {/* 历史记录画廊 Overlay */}
+      {showGallery && <HistoryGallery onClose={() => setShowGallery(false)} />}
+
+      {/* 全屏预览 Modal */}
       {zoomIndex !== null && results[zoomIndex] && (
         <div 
-          className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-2xl flex flex-col items-center justify-center animate-in fade-in duration-300"
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-3xl flex flex-col items-center justify-center animate-in fade-in duration-500 ease-out cursor-pointer"
           onClick={() => setZoomIndex(null)}
         >
-          <button 
-            className="absolute top-8 right-8 text-white/40 hover:text-white transition-all p-2 z-[110] hover:rotate-90"
-            onClick={() => setZoomIndex(null)}
-          >
-            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+          <button className="absolute top-8 right-8 text-white/20 hover:text-white transition-all p-2 z-[110] hover:rotate-90 duration-300">
+            <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
 
           {results.length > 1 && (
             <>
-              <button 
-                onClick={prevImage}
-                className="absolute left-8 top-1/2 -translate-y-1/2 p-4 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all z-[110]"
-              >
-                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <button onClick={prevImage} className="absolute left-8 top-1/2 -translate-y-1/2 p-5 rounded-full bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all z-[110] group">
+                <svg className="w-10 h-10 transform group-active:scale-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <button 
-                onClick={nextImage}
-                className="absolute right-8 top-1/2 -translate-y-1/2 p-4 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all z-[110]"
-              >
-                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <button onClick={nextImage} className="absolute right-8 top-1/2 -translate-y-1/2 p-5 rounded-full bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all z-[110] group">
+                <svg className="w-10 h-10 transform group-active:scale-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
             </>
           )}
 
-          <div className="relative flex flex-col items-center justify-center w-full max-w-6xl px-12" onClick={e => e.stopPropagation()}>
-            <div className="w-full max-w-2xl mb-8 text-center animate-in slide-in-from-top-4 duration-500">
-               <h3 className="text-accentGreen font-black text-3xl uppercase tracking-tighter mb-3 drop-shadow-[0_2px_10px_rgba(198,255,51,0.3)]">{results[zoomIndex].theme}</h3>
-               <p className="text-white/90 text-base font-medium leading-relaxed max-w-xl mx-auto">{results[zoomIndex].description}</p>
+          <div className="relative flex flex-col items-center max-w-7xl w-full px-12 animate-in zoom-in-95 fade-in duration-500 ease-out cursor-default">
+            <div className="w-full max-w-4xl mb-12 text-center" onClick={e => e.stopPropagation()}>
+               <h3 className="text-accentGreen font-black text-5xl lg:text-6xl uppercase tracking-tighter mb-6 drop-shadow-[0_4px_30px_rgba(198,255,51,0.5)] italic">{results[zoomIndex].theme}</h3>
+               <p className="text-white/70 text-xl font-medium leading-relaxed max-w-2xl mx-auto tracking-wide">{results[zoomIndex].description}</p>
             </div>
 
-            <div className="flex flex-col lg:flex-row items-center gap-12">
-              <div className="relative shadow-[0_0_80px_rgba(0,0,0,0.6)] rounded-2xl overflow-hidden bg-black/20 border border-white/5 max-w-2xl">
-                <img 
-                  src={results[zoomIndex].url} 
-                  alt="Zoomed NFT" 
-                  className="w-full max-h-[55vh] object-contain cursor-default"
-                />
+            <div className="relative flex items-center justify-center">
+              <div 
+                className="relative shadow-[0_20px_100px_rgba(0,0,0,0.9)] rounded-[2.5rem] overflow-hidden bg-black/40 border border-white/10 ring-1 ring-white/10 transition-transform duration-700 hover:scale-[1.02]"
+                onClick={e => e.stopPropagation()}
+              >
+                <img src={results[zoomIndex].url} alt="Zoomed NFT" className="w-auto max-w-full max-h-[55vh] object-contain" />
               </div>
-              
-              <div className="flex flex-col items-center gap-6 py-4 min-w-[100px]">
+
+              <div className="absolute left-[calc(100%+2.5rem)] bottom-0 flex flex-col items-center gap-4 animate-in slide-in-from-left-8 duration-700 delay-150" onClick={e => e.stopPropagation()}>
                 <button 
-                  onClick={() => downloadImage(results[zoomIndex].url)}
-                  className="bg-accentGreen text-black p-5 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all group"
-                  title="下载原图"
+                  onClick={() => downloadImage(results[zoomIndex].url)} 
+                  className="bg-accentGreen text-black p-7 rounded-3xl shadow-[0_15px_50px_rgba(198,255,51,0.4)] hover:scale-115 active:scale-90 transition-all hover:bg-white hover:rotate-3 group relative overflow-hidden"
                 >
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <div className="absolute inset-0 bg-white/40 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                  <svg className="w-10 h-10 relative z-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
-                <div className="flex flex-col items-center">
-                  <span className="text-[10px] font-black text-accentGreen uppercase tracking-widest">下载图片</span>
-                  <span className="text-[9px] font-bold text-white/40 uppercase tracking-tighter mt-1">{zoomIndex + 1} / {results.length}</span>
+                <div className="flex flex-col items-center space-y-1">
+                  <span className="text-[11px] font-black text-accentGreen uppercase tracking-[0.2em] whitespace-nowrap opacity-80">Download</span>
+                  <span className="text-[10px] font-bold text-white/20 uppercase tracking-tighter">{zoomIndex + 1} / {results.length}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {results.length > 1 && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 p-3 bg-white/5 rounded-2xl backdrop-blur-md border border-white/10">
+            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-5 p-4 bg-white/5 rounded-[2rem] backdrop-blur-2xl border border-white/10 shadow-2xl animate-in slide-in-from-bottom-8 duration-500 delay-200" onClick={e => e.stopPropagation()}>
               {results.map((res, idx) => (
-                <button
-                  key={idx}
-                  onClick={(e) => { e.stopPropagation(); setZoomIndex(idx); }}
-                  className={`h-14 aspect-square rounded-lg overflow-hidden border-2 transition-all hover:scale-105 ${zoomIndex === idx ? 'border-accentGreen' : 'border-transparent opacity-40 hover:opacity-100'}`}
+                <button 
+                  key={idx} 
+                  onClick={(e) => { e.stopPropagation(); setZoomIndex(idx); }} 
+                  className={`h-20 aspect-square rounded-2xl overflow-hidden border-2 transition-all duration-300 hover:scale-110 ${zoomIndex === idx ? 'border-accentGreen shadow-[0_0_25px_rgba(198,255,51,0.6)]' : 'border-transparent opacity-30 hover:opacity-100'}`}
                 >
                   <img src={res.url} className="w-full h-full object-cover" />
                 </button>
@@ -231,7 +205,8 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <nav className="h-16 border-b border-appBorder bg-appDark flex items-center px-8 sticky top-0 z-50">
+      {/* Navigation Header */}
+      <nav className="h-16 border-b border-appBorder bg-appDark/80 backdrop-blur-xl flex items-center justify-between px-8 sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-accentGreen flex items-center justify-center rounded-sm">
             <span className="text-black font-black text-[10px]">AG</span>
@@ -239,36 +214,26 @@ const App: React.FC = () => {
           <span className="font-black text-sm tracking-[0.2em] uppercase">AI NFT Generator</span>
         </div>
         
-        <div className="ml-auto flex items-center">
-          {/* API Key 配置按钮 */}
-          <button 
-            onClick={handleOpenKeyDialog}
-            className={`px-4 py-2 border rounded-sm text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-              hasKey 
-                ? 'bg-white/5 border-accentGreen/30 text-accentGreen' 
-                : 'bg-accentGreen text-black border-accentGreen shadow-[0_0_20px_rgba(198,255,51,0.2)] hover:scale-105'
-            }`}
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-               <path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            {hasKey ? 'API 已成功连接' : '连接 Gemini API Key'}
-          </button>
-        </div>
+        <button 
+          onClick={() => setShowGallery(true)}
+          className="flex items-center gap-3 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/10 transition-all group"
+        >
+          <span className="text-[10px] font-black uppercase tracking-widest text-appGray group-hover:text-white">画廊 History</span>
+          <div className="flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-accentGreen rounded text-[10px] font-black text-black">
+            {historyCount}
+          </div>
+        </button>
       </nav>
 
       <main className="flex-1 max-w-[1500px] mx-auto w-full p-8 lg:p-12">
-        <div className="mb-16 max-w-4xl">
-          <div className="flex gap-2 mb-6">
-            <span className="bg-white/5 text-accentGreen text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest border border-accentGreen/20">AI 跨维重塑</span>
-          </div>
-          <h1 className="text-5xl lg:text-7xl font-black mb-8 leading-[1.3] tracking-tighter uppercase italic">
-            打破次元 <span className="text-accentGreen">重塑艺术</span><br/>
-            铸造 <span className="bg-accentGreen text-black px-2 lg:px-4 py-1 inline-block -mt-1 lg:-mt-2 italic">多元艺术 NFT</span>
-          </h1>
-          <p className="text-appGray text-lg max-w-2xl font-medium leading-relaxed">
-            支持 2D 矢量、二次元、像素及 3D 渲染等多种艺术风格。输入关键词，AI 将自动跨越次元，为您重构极具收藏价值的数字资产。
-          </p>
+        <div className="mb-12">
+            <div className="flex gap-2 mb-6">
+              <span className="bg-white/5 text-accentGreen text-[10px] px-3 py-1 rounded font-bold uppercase tracking-widest border border-accentGreen/20">AI 跨维重塑引擎</span>
+            </div>
+            <h1 className="text-5xl lg:text-7xl font-black mb-8 leading-[1.3] tracking-tighter uppercase italic">
+              打破次元 <span className="text-accentGreen">重塑艺术</span><br/>
+              铸造 <span className="bg-accentGreen text-black px-2 lg:px-4 py-1 inline-block -mt-1 lg:-mt-2 italic">限量数字收藏</span>
+            </h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
@@ -278,7 +243,6 @@ const App: React.FC = () => {
                 <h2 className="text-xl font-black uppercase italic tracking-tighter">01. 素材上传</h2>
                 <span className="text-[10px] text-appGray font-bold uppercase tracking-widest">Source</span>
               </div>
-              
               <div 
                 className={`relative aspect-[16/10] rounded border border-dashed transition-all flex flex-col items-center justify-center overflow-hidden bg-black/40 ${
                   uploadedImage ? 'border-accentGreen/40' : 'border-appBorder hover:border-accentGreen/60 cursor-pointer'
@@ -289,18 +253,8 @@ const App: React.FC = () => {
                   <div className="w-full h-full group relative">
                     <img src={uploadedImage} alt="Uploaded" className="w-full h-full object-contain" />
                     <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); document.getElementById('fileInput')?.click(); }}
-                        className="bg-white text-black px-4 py-2 rounded-sm font-black text-[10px] uppercase tracking-tighter"
-                      >
-                        更换
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setUploadedImage(null); setResults([]); }}
-                        className="bg-red-500 text-white px-4 py-2 rounded-sm font-black text-[10px] uppercase tracking-tighter"
-                      >
-                        删除
-                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); document.getElementById('fileInput')?.click(); }} className="bg-white text-black px-4 py-2 rounded-sm font-black text-[10px] uppercase tracking-tighter">更换</button>
+                      <button onClick={(e) => { e.stopPropagation(); setUploadedImage(null); setResults([]); setCurrentExpectedCount(0); }} className="bg-red-500 text-white px-4 py-2 rounded-sm font-black text-[10px] uppercase tracking-tighter">删除</button>
                     </div>
                   </div>
                 ) : (
@@ -322,20 +276,17 @@ const App: React.FC = () => {
                   <h2 className="text-xl font-black uppercase italic tracking-tighter">02. 参数配置</h2>
                   <span className="text-[10px] text-appGray font-bold uppercase tracking-widest">Config</span>
                </div>
-               <ControlPanel 
-                  params={params} 
-                  setParams={setParams} 
-                  onGenerate={handleGenerate} 
-                  isLoading={isLoading} 
-                  disabled={!uploadedImage}
-               />
+               <ControlPanel params={params} setParams={setParams} onGenerate={handleGenerate} isLoading={isLoading} disabled={!uploadedImage} />
             </section>
           </div>
 
           <div className="lg:col-span-7 space-y-8">
-            <section className="bg-appCard border border-appBorder rounded-lg overflow-hidden flex flex-col shadow-2xl">
+            <section className="bg-appCard border border-appBorder rounded-xl overflow-hidden flex flex-col shadow-2xl relative min-h-[500px]">
               <div className="p-4 border-b border-appBorder flex justify-between items-center bg-white/5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white">铸造预览 {results.length > 0 ? `(${results.length})` : ''}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white">当前铸造进度 Preview</span>
+                  {results.length > 0 && <span className="text-[10px] bg-accentGreen/10 text-accentGreen px-2 py-0.5 rounded font-black">{results.length} / {currentExpectedCount || params.quantity}</span>}
+                </div>
                 <div className="flex gap-1.5">
                   <div className="w-2 h-2 rounded-full bg-red-500/20"></div>
                   <div className="w-2 h-2 rounded-full bg-yellow-500/20"></div>
@@ -343,123 +294,96 @@ const App: React.FC = () => {
                 </div>
               </div>
               
-              <div className="aspect-[4/3] lg:aspect-video bg-black p-2 group flex items-center justify-center">
-                {results.length > 0 ? (
-                  <div className={`grid h-full w-full gap-2 ${getGridCols(results.length)}`}>
-                    {results.map((res, idx) => (
-                      <div 
-                        key={idx}
-                        className="relative cursor-zoom-in overflow-hidden group/item bg-neutral-900 flex items-center justify-center border border-white/5 rounded"
-                        onClick={() => setZoomIndex(idx)}
-                      >
-                        <img 
-                          src={res.url} 
-                          alt={`NFT Result ${idx + 1}`} 
-                          className="w-full h-full object-contain transition-transform duration-500 group-hover/item:scale-105" 
-                        />
-                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/item:opacity-100 transition-opacity pointer-events-none">
-                          <button 
-                            onClick={(e) => downloadImage(res.url, e)}
-                            className="absolute bottom-3 right-3 bg-accentGreen text-black p-2.5 rounded-full shadow-2xl hover:bg-white transition-all hover:scale-110 active:scale-90 pointer-events-auto"
+              <div className="flex-1 bg-neutral-950 p-6">
+                {(results.length > 0 || isLoading) ? (
+                  <div className={`grid gap-4 h-full ${getGridCols()}`}>
+                    {Array.from({ length: currentExpectedCount || params.quantity }).map((_, idx) => {
+                      const result = results[idx];
+                      if (result) {
+                        return (
+                          <div 
+                            key={`res-${idx}`}
+                            className="relative aspect-square cursor-zoom-in overflow-hidden group/item bg-black border border-white/5 rounded-2xl animate-in fade-in zoom-in-95 duration-700" 
+                            onClick={() => setZoomIndex(idx)}
                           >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : isLoading ? (
-                  <div className="h-full flex flex-col items-center justify-center p-12 text-center">
-                    <div className="w-20 h-20 mb-8 relative">
-                      <div className="absolute inset-0 border-[4px] border-appBorder rounded-full"></div>
-                      <div className="absolute inset-0 border-t-[4px] border-accentGreen rounded-full animate-spin"></div>
-                    </div>
-                    <p className="text-sm font-black text-accentGreen uppercase tracking-[0.2em] animate-pulse">AI 正在进行艺术跨维重塑 ({params.quantity}张)...</p>
-                    
-                    <button 
-                      onClick={handleStopTask}
-                      className="mt-10 px-8 py-3 border border-white/10 text-white/40 hover:border-red-500/50 hover:text-red-500 hover:bg-red-500/5 transition-all text-[10px] font-black uppercase tracking-widest rounded bg-white/5 active:scale-95"
-                    >
-                      取消生成
-                    </button>
+                            <img src={result.url} alt={`NFT Result ${idx}`} className="w-full h-full object-contain transition-transform duration-700 group-hover/item:scale-105" />
+                            {/* Hover 下载按钮 - 调整至右下角 */}
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-end justify-end p-4">
+                               <button onClick={(e) => downloadImage(result.url, e)} className="bg-accentGreen text-black p-3 rounded-xl shadow-2xl hover:bg-white transition-all hover:scale-110 active:scale-90">
+                                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                               </button>
+                            </div>
+                          </div>
+                        );
+                      } else if (isLoading) {
+                        return (
+                          <div key={`loading-${idx}`} className="relative aspect-square border border-dashed border-white/10 rounded-2xl bg-white/[0.02] flex flex-col items-center justify-center overflow-hidden">
+                             <div className="absolute inset-0 bg-gradient-to-br from-accentGreen/5 to-transparent animate-pulse"></div>
+                             <div className="w-10 h-10 border-2 border-white/5 border-t-accentGreen rounded-full animate-spin mb-4"></div>
+                             <span className="text-[10px] font-black text-accentGreen/40 uppercase tracking-[0.2em] animate-pulse">Minting...</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
                   </div>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center space-y-6 px-12">
-                    <div className="w-16 h-16 bg-white/5 border border-appBorder rounded-xl flex items-center justify-center mx-auto opacity-30">
-                      <svg className="w-8 h-8 text-appGray" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-                        <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round"/>
-                      </svg>
+                  <div className="h-full flex flex-col items-center justify-center space-y-8 py-20">
+                    <div className="relative">
+                      <div className="w-20 h-20 bg-white/5 border border-appBorder rounded-2xl flex items-center justify-center opacity-30">
+                        <svg className="w-10 h-10 text-appGray" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                          <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round"/>
+                        </svg>
+                      </div>
                     </div>
-                    <div className="text-center">
-                      <p className="text-appGray text-xs font-black uppercase tracking-[0.3em] font-black">准备就绪</p>
-                      <p className="text-appGray/40 text-[10px] uppercase mt-2">选择您心仪的艺术次元开始创作</p>
+                    <div className="text-center space-y-2">
+                      <p className="text-appGray text-sm font-black uppercase tracking-[0.4em]">Ready to Re-Build</p>
+                      <p className="text-appGray/30 text-[10px] uppercase tracking-widest">设置参数后点击下方铸造按钮即可开始创作</p>
                     </div>
                   </div>
                 )}
               </div>
+
+              {isLoading && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+                  <button onClick={handleStopTask} className="px-8 py-3 bg-black/60 backdrop-blur-xl border border-red-500/30 text-red-500 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase tracking-widest rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.5)] active:scale-95">
+                    终止当前铸造任务
+                  </button>
+                </div>
+              )}
             </section>
 
-            {results.length > 0 && seriesMetadata && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-accentGreen/5 border border-accentGreen/20 rounded-lg p-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <h3 className="text-[10px] font-black text-accentGreen uppercase tracking-widest">系列主题</h3>
-                  <p className="text-white text-2xl font-black italic uppercase tracking-tighter">{seriesMetadata.theme}</p>
-                  <div className="flex gap-4 pt-2 border-t border-accentGreen/10">
-                    <div className="flex-1">
-                      <span className="text-[9px] font-black text-accentGreen/40 uppercase block mb-1">铸造数量</span>
-                      <span className="text-white text-xs font-bold">{params.quantity} 件资产</span>
-                    </div>
-                    <div className="flex-1">
-                      <span className="text-[9px] font-black text-accentGreen/40 uppercase block mb-1">风格等级</span>
-                      <span className="text-accentGreen text-xs font-bold">LEGENDARY</span>
-                    </div>
-                  </div>
+            {/* 恢复并优化产品功能介绍区块 (在预览图下方展示) */}
+            {results.length > 0 && !isLoading && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-6 duration-700">
+                <div className="bg-accentGreen/5 border border-accentGreen/20 rounded-xl p-6 space-y-4 shadow-[0_10px_40px_rgba(198,255,51,0.05)]">
+                  <h3 className="text-[10px] font-black text-accentGreen uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-accentGreen rounded-full animate-pulse"></span>
+                    Collection Theme
+                  </h3>
+                  <p className="text-white text-2xl font-black italic uppercase tracking-tighter">{results[results.length-1].theme}</p>
                 </div>
-                
-                <div className="bg-white/5 border border-appBorder rounded-lg p-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <h3 className="text-[10px] font-black text-appGray uppercase tracking-widest">设计描述</h3>
-                  <p className="text-white/70 text-sm font-medium leading-relaxed">{seriesMetadata.description}</p>
+                <div className="bg-white/5 border border-appBorder rounded-xl p-6 space-y-4 shadow-xl">
+                  <h3 className="text-[10px] font-black text-appGray uppercase tracking-widest">AI Creation Log</h3>
+                  <p className="text-white/70 text-sm font-medium leading-relaxed italic">{results[results.length-1].description}</p>
                 </div>
               </div>
             )}
-
-            <div className="bg-appCard border border-appBorder rounded-lg p-6 lg:p-8">
-              <h3 className="text-[10px] font-black text-appGray uppercase tracking-[0.2em] mb-6 italic border-b border-appBorder pb-3">AI NFT Generator 核心优势</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <div className="w-1.5 h-1.5 bg-accentGreen rounded-full mb-3"></div>
-                  <h4 className="text-xs font-black text-white uppercase">次元跨越</h4>
-                  <p className="text-[10px] text-appGray leading-relaxed font-medium">在 2D 与 3D 之间自由切换，探索多种视觉边界</p>
-                </div>
-                <div className="space-y-2">
-                  <div className="w-1.5 h-1.5 bg-appGray rounded-full mb-3"></div>
-                  <h4 className="text-xs font-black text-white uppercase">无限联想</h4>
-                  <p className="text-[10px] text-appGray leading-relaxed font-medium">AI 深度理解关键词，自动补充极具美感的视觉细节</p>
-                </div>
-                <div className="space-y-2">
-                  <div className="w-1.5 h-1.5 bg-appGray rounded-full mb-3"></div>
-                  <h4 className="text-xs font-black text-white uppercase">专属铸造</h4>
-                  <p className="text-[10px] text-appGray leading-relaxed font-medium">支持批量生成高一致性系列，打造您的专属收藏库</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
         {error && (
-          <div className="mt-12 p-5 bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold rounded uppercase tracking-widest text-center animate-bounce">
-            错误提示: {error}
+          <div className="mt-12 p-6 bg-red-500/10 border border-red-500/20 text-red-500 text-[12px] font-black rounded-xl uppercase tracking-widest text-center animate-in fade-in slide-in-from-top-4">
+            Warning: {error}
           </div>
         )}
       </main>
 
-      <footer className="mt-20 border-t border-appBorder py-12 px-8 bg-black">
-        <div className="max-w-[1400px] mx-auto flex flex-col items-center justify-center gap-4">
-          <div className="flex flex-col md:flex-row items-center gap-4">
-            <span className="text-appGray text-[10px] font-black uppercase tracking-widest text-center">© 2024 Sunkim</span>
-          </div>
+      <footer className="mt-20 border-t border-appBorder py-12 px-8 opacity-50">
+        <div className="max-w-[1400px] mx-auto flex flex-col items-center justify-center gap-2">
+          <span className="text-appGray text-[10px] font-black uppercase tracking-widest">© 2024 Sunkim AI Multi-Verse Engine</span>
         </div>
       </footer>
     </div>

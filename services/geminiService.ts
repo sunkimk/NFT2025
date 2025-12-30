@@ -4,113 +4,111 @@ import { GenerationParams, AvatarStyle, GeneratedResult, Accessory, Clothing } f
 
 export const transformImage = async (
   base64Image: string,
-  params: GenerationParams
+  params: GenerationParams,
+  index: number = 0,
+  total: number = 1
 ): Promise<GeneratedResult> => {
-  // Use process.env.API_KEY directly without modification as per @google/genai coding guidelines.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  const imageData = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+
   let themeContext = "";
   if (params.randomizeTheme) {
-    themeContext = "创意自由度：开启随机主题。请为用户构思一个完全独特且意想不到的创意主题（例如：星际歌剧、赛博朋克、古代神话、蒸汽朋克等）。根据该主题重新设计所有视觉元素。";
+    themeContext = "创意自由度：开启完全随机的主题重构。请为用户构思一个惊艳且独特的 NFT 系列主题（如：机械禅意、极光幽灵、复古未来主义等）。";
   } else if (params.theme) {
-    themeContext = `创意主题：“${params.theme}”。请发挥创意，使视觉元素完美契合该主题。`;
+    themeContext = `核心主题：“${params.theme}”。请让角色的每一个细节都深度契合这一主题。`;
   }
 
   const is3DStyle = params.style.startsWith('3D');
   let styleInstruction = "";
 
   if (is3DStyle) {
-    styleInstruction = "应用高质量 3D 渲染，带有柔和阴影、专业摄影棚灯光和 3D 材质感（如粘土、塑胶或金属）。";
+    styleInstruction = "请执行极致的 3D 渲染，确保拥有电影级的材质感（如磨砂、液态金属或发光塑胶），光影处理需达到摄影棚水准。";
   } else if (params.style === AvatarStyle.RETRO_DITHERED) {
-    styleInstruction = "应用复古 1-Bit 抖动艺术风格（Retro Dithered/Halftone）。要求：极高对比度的单色或双色美学，使用点阵抖动（Dithering）来表现阴影和过渡，呈现早期 Macintosh 或 GameBoy 的黑白/墨绿像素屏幕质感，画面应具有独特的复古数字艺术魅力。";
+    styleInstruction = "请应用 1-Bit 抖动艺术风格。使用黑白点阵（Dithering）来表达阴影和质感，呈现早期复古计算机屏幕的高对比度数字美学。";
   } else {
-    styleInstruction = "应用高质量 2D 艺术表现手法，根据选定风格调整线条感、配色和笔触，确保其具有独特的平面艺术魅力。";
+    styleInstruction = "请应用高质量的 2D 艺术表现，根据风格要求精准控制线条、色块和平面美学。";
   }
 
   let detailContext = "";
   if (params.isRandom) {
-    detailContext = "随机细节模式已启用：请为角色随机设计极具创意的配饰与服装细节。";
+    detailContext = "细节随机化已开启：请自由发挥，为角色增加极具个性的服装细节和配饰，增强其作为收藏品的独特性。";
   } else {
-    const accStr = params.accessory === Accessory.NONE ? "无（保持原貌或不添加额外饰品）" : params.accessory;
-    const clothStr = params.clothing === Clothing.NONE ? "无（保持图像中原本的穿着风格）" : params.clothing;
-    detailContext = `具体要求 - 配饰: ${accStr}. 服装: ${clothStr}.`;
+    const accStr = params.accessory === Accessory.NONE ? "保持原貌" : params.accessory;
+    const clothStr = params.clothing === Clothing.NONE ? "保持原貌" : params.clothing;
+    detailContext = `细节定制 - 配饰选择: ${accStr}, 服装款式: ${clothStr}。`;
   }
 
-  const prompt = `
-    将附件图像中的角色转换为高质量的 NFT 艺术头像。
-    
-    固定视觉框架（必须严格遵守）：
-    - 材质风格：${params.style}
-    - 场景背景：${params.background}
-    
-    ${detailContext}
-    
-    ${themeContext}
-    
-    指令要求：
-    1. 保持原角色的核心特征（物种、关键面部特征、主要配色方案）。
-    2. 整体视觉风格必须符合所选的：${params.style}。
-    3. ${styleInstruction}
-    4. 角色应为居中的肖像，高分辨率，4K，呈现具有高收藏价值的数字艺术藏品美学。
-    5. 转化强度（Creative Freedom）：${params.isRandom ? '85' : params.intensity}/100。
+  const diversityInstruction = total > 1 ? `
+    【系列化多样性指令】：
+    这是系列中的第 ${index + 1} 张（共 ${total} 张）。为了确保收藏价值，请提供独特的视觉诠释：
+    - 角色职能：探索主题下的不同细分角色（如：乐手、武士、科技特工等）。
+    - 动作姿态：尝试不同的视角和动态姿势。
+    - 氛围差异：在保持核心配色的基础上，微调背景光效，使每一张都独一无二。
+  ` : "";
 
-    关键要求：在你的文本回复部分，必须且仅提供以下两行简体中文信息：
-    第一行：主题名称: [为此系列起一个简洁响亮的主题名]
-    第二行：创意描述: [用一句话简洁描述该系列的设计创意和风格亮点]
+  const prompt = `
+    【图像转换任务：NFT 艺术重构】
+    输入：附件中的角色图片。
+    任务：基于该角色，生成一张全新的、艺术风格化的 肖像图像。
+    
+    1. 视觉框架：
+       - 核心艺术风格：${params.style}
+       - 场景背景设置：${params.background}
+       - 重构强度 (0-100)：${params.isRandom ? '85' : params.intensity}
+    
+    2. 指令细则：
+       - ${styleInstruction}
+       - ${detailContext}
+       - ${themeContext}
+       ${diversityInstruction}
+       - 角色必须居中，构图为完美的 1:1 肖像。
+       - 必须保留原角色的核心视觉灵魂，但必须将其完全重塑。
+    
+    3. 输出规范：
+       - 直接输出生成的图像数据。
+       - 随后提供文本：
+         主题名称: [填写名称]
+         创意描述: [描述亮点]
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64Image.split(',')[1],
-              mimeType: 'image/png',
-            },
-          },
-          { text: prompt },
-        ],
+        parts: [{ inlineData: { data: imageData, mimeType: 'image/png' } }, { text: prompt }],
       },
       config: {
-        imageConfig: {
-          aspectRatio: "1:1",
-        }
+        imageConfig: { aspectRatio: "1:1" },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        ]
       }
     });
 
-    if (!response.candidates?.[0]?.content?.parts) {
-      throw new Error("模型未生成响应内容。");
+    const candidate = response.candidates?.[0];
+    if (!candidate || candidate.finishReason === 'SAFETY') {
+      throw new Error("生成受限或失败。");
     }
 
     let imageUrl = "";
-    let themeText = "";
-    let descriptionText = "";
-
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-      } else if (part.text) {
-        const text = part.text;
-        const themeMatch = text.match(/(主题名称|Theme Name)[:：]\s*(.*)/i);
-        const descMatch = text.match(/(创意描述|Description)[:：]\s*(.*)/i);
-        if (themeMatch) themeText = themeMatch[2].trim();
-        if (descMatch) descriptionText = descMatch[2].trim();
-      }
+    for (const part of candidate.content.parts) {
+      if (part.inlineData) imageUrl = `data:image/png;base64,${part.inlineData.data}`;
     }
 
-    if (!imageUrl) {
-      throw new Error("未能从响应中找到生成的图像。");
-    }
-
+    const fullText = response.text || "";
+    const themeMatch = fullText.match(/(主题名称|Theme Name)[:：]\s*(.*)/i);
+    const descMatch = fullText.match(/(创意描述|Description)[:：]\s*(.*)/i);
+    
     return {
       url: imageUrl,
-      theme: themeText || (params.theme || "定制风格系列"),
-      description: descriptionText || "角色已通过 AI 完成艺术化重塑，呈现独特美学。"
+      theme: themeMatch ? themeMatch[2].trim() : (params.theme || "重构系列"),
+      description: descMatch ? descMatch[2].trim() : "AI 完成艺术化重构。"
     };
   } catch (error) {
-    console.error("图像转换错误:", error);
     throw error;
   }
 };
