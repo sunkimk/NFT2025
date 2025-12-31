@@ -41,10 +41,11 @@
         color: #1A1A1A;
         -webkit-font-smoothing: antialiased;
       }
-      .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+      /* 极细横向滚动条 */
+      .custom-scrollbar::-webkit-scrollbar { height: 2px; }
       .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.05); border-radius: 10px; }
-      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.1); }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
       
       input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none;
@@ -68,6 +69,7 @@
   </head>
   <body class="selection:bg-black selection:text-white">
     <div id="root"></div>
+    <!-- 核心：添加脚本入口 -->
     <script type="module" src="index.tsx"></script>
   </body>
 </html>
