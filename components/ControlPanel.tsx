@@ -5,192 +5,102 @@ import { AvatarStyle, Accessory, Clothing, Background, GenerationParams } from '
 interface ControlPanelProps {
   params: GenerationParams;
   setParams: React.Dispatch<React.SetStateAction<GenerationParams>>;
-  onGenerate: () => void;
   isLoading: boolean;
-  disabled: boolean;
 }
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ params, setParams, onGenerate, isLoading, disabled }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ params, setParams, isLoading }) => {
   const handleChange = (field: keyof GenerationParams, value: any) => {
     setParams(prev => ({ ...prev, [field]: value }));
   };
 
-  const toggleRandom = (checked: boolean) => {
-    setParams(prev => ({ ...prev, isRandom: checked }));
-  };
-
-  const toggleRandomTheme = (checked: boolean) => {
-    setParams(prev => ({ ...prev, randomizeTheme: checked }));
-  };
-
-  const updateQuantity = (delta: number) => {
-    const nextVal = Math.max(1, Math.min(9, params.quantity + delta));
-    handleChange('quantity', nextVal);
-  };
-
-  const isThemeDisabled = params.randomizeTheme;
-
-  const sectionTitleClass = "text-[10px] font-black uppercase tracking-[0.2em] text-accentGreen/60 mb-3 flex items-center gap-2";
-  
-  const labelClass = (isDisabled: boolean) => 
-    `text-[9px] font-bold uppercase tracking-widest mb-1.5 block transition-opacity duration-300 ${isDisabled ? 'text-appGray/40' : 'text-appGray'}`;
+  const labelClass = "text-[9px] font-black uppercase tracking-[0.2em] text-black/30 mb-2 block";
   
   const selectClass = (isDisabled: boolean) => 
-    isDisabled 
-    ? "w-full bg-neutral-950/30 border border-appBorder/50 text-[13px] rounded p-2.5 text-appGray/20 cursor-not-allowed opacity-40 transition-all" 
-    : "w-full bg-black/40 border border-appBorder text-[13px] rounded p-2.5 text-white focus:border-accentGreen outline-none cursor-pointer hover:bg-white/5 transition-all";
-  
-  const inputClass = isThemeDisabled
-    ? "w-full border border-appBorder/50 text-[13px] rounded p-2.5 text-appGray/20 bg-neutral-950/30 opacity-40 cursor-not-allowed transition-all"
-    : "w-full bg-white/5 border border-appBorder text-[13px] rounded p-2.5 text-white focus:border-accentGreen outline-none transition-all placeholder:text-appGray/30";
-    
-  const sliderClass = `w-full h-[2px] appearance-none transition-all duration-300 ${params.isRandom ? 'bg-appBorder/30 cursor-not-allowed opacity-20' : 'bg-appBorder cursor-pointer'}`;
+    `w-full bg-white border ${isDisabled ? 'border-transparent opacity-20 cursor-not-allowed' : 'border-black/5 hover:border-black/20 focus:border-black focus:ring-4 focus:ring-black/5'} rounded-xl p-2.5 text-[11px] font-bold transition-all outline-none appearance-none cursor-pointer pr-8 shadow-sm`;
 
   return (
-    <div className="space-y-5">
-      {/* 01. 创意灵感 - 紧凑型 */}
-      <div className="bg-appCard/40 border border-appBorder p-3.5 rounded-lg transition-all">
-        <div className="flex justify-between items-center mb-2.5">
-          <h3 className={sectionTitleClass}>
-            <span className="w-1 h-1 bg-accentGreen rounded-full"></span>
-            Theme Concept
-          </h3>
-          <label className="flex items-center gap-1.5 cursor-pointer group">
-            <input type="checkbox" className="hidden" checked={params.randomizeTheme} onChange={(e) => toggleRandomTheme(e.target.checked)} />
-            <div className={`w-3 h-3 rounded-sm border transition-colors ${params.randomizeTheme ? 'bg-accentGreen border-accentGreen' : 'border-appBorder group-hover:border-accentGreen'}`}>
-              {params.randomizeTheme && <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    <div className="space-y-6 py-2">
+      {/* 第一排：核心视觉 (Core Visuals) - 艺术材质与背景 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className={labelClass}>艺术材质 Style</label>
+          <div className="relative group">
+            <select className={selectClass(false)} value={params.style} onChange={(e) => handleChange('style', e.target.value)}>
+              {Object.values(AvatarStyle).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-20">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3}/></svg>
             </div>
-            <span className={`text-[9px] font-bold uppercase tracking-tighter ${params.randomizeTheme ? 'text-accentGreen' : 'text-appGray'}`}>AI 随机主题</span>
-          </label>
+          </div>
         </div>
-        <input 
-          type="text" 
-          placeholder={isThemeDisabled ? "AI 将自由构思惊艳的主题..." : "输入关键词（如：赛博、西游、废土...）"}
-          className={inputClass}
-          value={isThemeDisabled ? '' : (params.theme || '')}
-          onChange={(e) => handleChange('theme', e.target.value)}
-          disabled={isThemeDisabled}
-        />
-      </div>
 
-      {/* 02. 艺术风格与背景 - 并排布局以节省高度 */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-appCard/40 border border-appBorder p-3.5 rounded-lg">
-          <label className={labelClass(false)}>材质风格 Material</label>
-          <select
-            className={selectClass(false)}
-            value={params.style}
-            onChange={(e) => handleChange('style', e.target.value)}
-          >
-            {Object.values(AvatarStyle).map(s => <option key={s} value={s} className="bg-appCard">{s}</option>)}
-          </select>
-        </div>
-        <div className="bg-appCard/40 border border-appBorder p-3.5 rounded-lg">
-          <label className={labelClass(false)}>场景背景 Env</label>
-          <select
-            className={selectClass(false)}
-            value={params.background}
-            onChange={(e) => handleChange('background', e.target.value)}
-          >
-            {Object.values(Background).map(b => <option key={b} value={b} className="bg-appCard">{b}</option>)}
-          </select>
+        <div>
+          <label className={labelClass}>场景背景 Background</label>
+          <div className="relative group">
+            <select className={selectClass(false)} value={params.background} onChange={(e) => handleChange('background', e.target.value)}>
+              {Object.values(Background).map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-20">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3}/></svg>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 03. 核心配饰 - 全随机仅影响此模块 */}
-      <div className="bg-appCard/60 border border-accentGreen/10 p-4 rounded-lg space-y-4">
-        <div className="flex justify-between items-center border-b border-appBorder pb-2.5">
-          <h3 className={sectionTitleClass}>Details & Config</h3>
-          <label className="flex items-center gap-1.5 cursor-pointer group">
-            <input type="checkbox" className="hidden" checked={params.isRandom} onChange={(e) => toggleRandom(e.target.checked)} />
-            <div className={`w-3.5 h-3.5 rounded-sm border transition-colors ${params.isRandom ? 'bg-accentGreen border-accentGreen' : 'border-appBorder group-hover:border-accentGreen'}`}>
-              {params.isRandom && <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      {/* 第二排：细节定制 (Details) - 服装与配饰 */}
+      <div className="space-y-4 pt-4 border-t border-black/5">
+        <div className="flex items-center justify-between">
+          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-black/30 block">细节定制 Details</label>
+          <div className="flex items-center gap-3 bg-black/5 px-3 py-1.5 rounded-full hover:bg-black/10 transition-colors cursor-pointer" onClick={() => handleChange('isRandom', !params.isRandom)}>
+             <span className="text-[8px] font-black uppercase text-black/40">自动随机 Auto Random</span>
+             <div className={`relative w-8 h-4 rounded-full transition-colors duration-300 ${params.isRandom ? 'bg-black' : 'bg-black/10'}`}>
+              <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-300 shadow-sm ${params.isRandom ? 'left-4.5' : 'left-0.5'}`}></div>
             </div>
-            <span className={`text-[9px] font-bold uppercase tracking-tighter ${params.isRandom ? 'text-accentGreen' : 'text-appGray'}`}>细节随机</span>
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass(params.isRandom)}>饰品配件</label>
-            <select
-              className={selectClass(params.isRandom)}
-              value={params.accessory}
-              onChange={(e) => handleChange('accessory', e.target.value)}
-              disabled={params.isRandom}
-            >
-              {Object.values(Accessory).map(a => <option key={a} value={a} className="bg-appCard">{a}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass(params.isRandom)}>服装款式</label>
-            <select
-              className={selectClass(params.isRandom)}
-              value={params.clothing}
-              onChange={(e) => handleChange('clothing', e.target.value)}
-              disabled={params.isRandom}
-            >
-              {Object.values(Clothing).map(c => <option key={c} value={c} className="bg-appCard">{c}</option>)}
-            </select>
           </div>
         </div>
-
-        <div className="pt-1">
-          <div className={`flex justify-between items-end mb-2 transition-opacity ${params.isRandom ? 'opacity-20' : 'opacity-100'}`}>
-            <div className="flex flex-col">
-              <label className="text-[10px] font-bold text-appGray uppercase tracking-widest">重构强度</label>
-              <span className="text-[8px] text-appGray/50 uppercase font-medium">调整 AI 偏离原图的创意自由度</span>
+        
+        <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 transition-all duration-500 ${params.isRandom ? 'opacity-30 pointer-events-none scale-[0.98]' : 'opacity-100'}`}>
+          <div className="relative group">
+            <span className="absolute left-3 top-[-6px] bg-white px-1 text-[8px] font-black text-black/20 uppercase z-10">服装 Clothing</span>
+            <select className={selectClass(params.isRandom)} value={params.clothing} onChange={(e) => handleChange('clothing', e.target.value)}>
+              {Object.values(Clothing).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-20">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3}/></svg>
             </div>
-            <span className="text-[10px] font-mono text-accentGreen font-bold">{params.isRandom ? '85' : params.intensity}%</span>
           </div>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={params.isRandom ? 85 : params.intensity}
+          <div className="relative group">
+            <span className="absolute left-3 top-[-6px] bg-white px-1 text-[8px] font-black text-black/20 uppercase z-10">配饰 Accessory</span>
+            <select className={selectClass(params.isRandom)} value={params.accessory} onChange={(e) => handleChange('accessory', e.target.value)}>
+              {Object.values(Accessory).map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-20">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 9l-7 7-7-7" strokeWidth={3}/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 第三排：重构强度 (Intensity) - 压缩高度，整合百分比与说明 */}
+      <div className="pt-2">
+        <div className="bg-black/[0.03] p-4 rounded-2xl space-y-3">
+          <div className="flex justify-between items-center">
+             <div className="flex items-center gap-3">
+               <label className="text-[9px] font-black uppercase tracking-[0.2em] text-black/30 shrink-0">重构强度 Intensity</label>
+               <span className="text-[8px] font-bold text-black/20 uppercase truncate">· 保留原图特征程度</span>
+             </div>
+             <div className="px-2 py-0.5 bg-black text-white text-[10px] font-black rounded-md tabular-nums">
+               {params.isRandom ? 85 : params.intensity}%
+             </div>
+          </div>
+          <input 
+            type="range" min="0" max="100" 
+            value={params.isRandom ? 85 : params.intensity} 
             onChange={(e) => handleChange('intensity', parseInt(e.target.value))}
             disabled={params.isRandom}
-            className={sliderClass}
+            className={`w-full h-1.5 appearance-none rounded-full transition-all ${params.isRandom ? 'bg-black/5 cursor-not-allowed' : 'bg-black/10 cursor-pointer hover:bg-black/20'}`}
           />
         </div>
-      </div>
-
-      {/* 铸造控制台 */}
-      <div className="flex gap-3 pt-1">
-        <div className="flex items-center bg-black/40 border border-appBorder rounded-md overflow-hidden h-14">
-          <div className="px-3 flex flex-col items-center justify-center min-w-[50px]">
-             <span className="text-[7px] font-black text-appGray uppercase">QTY</span>
-             <span className="text-lg font-black text-white leading-none">{params.quantity}</span>
-          </div>
-          <div className="flex flex-col border-l border-appBorder h-full">
-            <button onClick={() => updateQuantity(1)} disabled={params.quantity >= 9 || isLoading} className="flex-1 px-3 hover:bg-accentGreen hover:text-black transition-colors border-b border-appBorder disabled:opacity-20 text-white flex items-center">
-              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M5 15l7-7 7 7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-            <button onClick={() => updateQuantity(-1)} disabled={params.quantity <= 1 || isLoading} className="flex-1 px-3 hover:bg-accentGreen hover:text-black transition-colors disabled:opacity-20 text-white flex items-center">
-              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <button
-          onClick={onGenerate}
-          disabled={disabled || isLoading}
-          className={`flex-1 rounded-md font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 h-14 ${
-            disabled || isLoading 
-            ? 'bg-neutral-800 text-neutral-600 cursor-not-allowed' 
-            : 'bg-accentGreen text-black hover:brightness-110 active:scale-[0.98] shadow-lg shadow-accentGreen/10'
-          }`}
-        >
-          {isLoading ? (
-            <div className="flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span className="text-xs">铸造中...</span>
-            </div>
-          ) : <span className="text-sm">铸造 NFT ({params.quantity})</span>}
-        </button>
       </div>
     </div>
   );

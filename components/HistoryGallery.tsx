@@ -9,6 +9,7 @@ const HistoryGallery: React.FC<HistoryGalleryProps> = ({ onClose }) => {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isBatching, setIsBatching] = useState(false);
 
   const loadHistory = async () => {
     const history = await getAllHistory();
@@ -37,14 +38,51 @@ const HistoryGallery: React.FC<HistoryGalleryProps> = ({ onClose }) => {
     link.click();
   };
 
-  const batchDownload = () => {
+  const batchDownload = async () => {
     const selectedItems = items.filter(item => selectedIds.has(item.id));
-    selectedItems.forEach((item, index) => {
-      // 稍微延迟下载以避免浏览器限制
-      setTimeout(() => {
-        handleDownload(item.url, `nft-${item.theme}-${item.id.slice(0,4)}`);
-      }, index * 200);
-    });
+    if (selectedItems.length === 0) return;
+
+    setIsBatching(true);
+    try {
+      // 动态导入 JSZip 实现真正的打包下载，解决多图下载被拦截的问题
+      // Fixed: Cast jszipModule to any to handle unknown module content from dynamic import
+      const jszipModule = (await import('https://esm.sh/jszip')) as any;
+      const JSZip = jszipModule.default || jszipModule;
+      const zip = new JSZip();
+      
+      selectedItems.forEach((item: HistoryItem) => {
+        // Ensure all properties are strings to prevent type issues
+        const currentUrl: string = String(item.url || '');
+        const currentTheme: string = String(item.theme || 'NFT');
+        const currentId: string = String(item.id || '');
+        
+        // Extract base64 part of the data URL
+        const parts = currentUrl.split(',');
+        const base64Data: string = parts.length > 1 ? parts[1] : currentUrl;
+        
+        // 清理文件名中的非法字符
+        // Fixed: Explicitly typed safeTheme as string to prevent potential unknown inference in template literals
+        const safeTheme: string = currentTheme.replace(/[\\/:*?"<>|]/g, '_');
+        const filename: string = `NFT-${safeTheme}-${currentId.slice(0, 4)}.png`;
+        
+        // Use explicit any cast on the zip instance to handle dynamic module typing issues
+        // Fixed: Cast arguments to string where they might be inferred as unknown
+        (zip as any).file(filename as string, base64Data as string, { base64: true });
+      });
+      
+      const content = await (zip as any).generateAsync({ type: 'blob' });
+      const zipUrl = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = zipUrl;
+      link.download = `NFT-Collection-${new Date().getTime()}.zip`;
+      link.click();
+      URL.revokeObjectURL(zipUrl);
+    } catch (err) {
+      console.error("Batch download failed:", err);
+      alert("打包下载失败，请稍后重试。");
+    } finally {
+      setIsBatching(false);
+    }
   };
 
   const batchDelete = async () => {
@@ -118,7 +156,7 @@ const HistoryGallery: React.FC<HistoryGalleryProps> = ({ onClose }) => {
                   <img src={item.url} alt={item.theme} className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110" />
                 </div>
 
-                {/* 悬浮覆盖层 - 操作按钮位置优化 */}
+                {/* 悬浮覆盖层 - 操作按钮：右下下载，左下删除 */}
                 {!isSelectMode && (
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-4">
                     <div className="text-center">
@@ -127,7 +165,7 @@ const HistoryGallery: React.FC<HistoryGalleryProps> = ({ onClose }) => {
                     </div>
                     <div className="flex justify-between items-center mt-auto">
                       <button 
-                        onClick={async (e) => { e.stopPropagation(); if(confirm("删除此项？")) { await deleteFromHistory(item.id); loadHistory(); } }}
+                        onClick={async (e) => { e.stopPropagation(); if(confirm("删除此项记录？")) { await deleteFromHistory(item.id); loadHistory(); } }}
                         className="p-2.5 bg-red-500/80 backdrop-blur text-white rounded-xl hover:bg-red-500 transition-all hover:scale-110 active:scale-95"
                       >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7" strokeWidth={2}/></svg>
@@ -168,7 +206,7 @@ const HistoryGallery: React.FC<HistoryGalleryProps> = ({ onClose }) => {
         )}
       </div>
 
-      {/* 底部操作栏 (仅多选模式) */}
+      {/* 底部操作栏 (多选模式) */}
       {isSelectMode && selectedIds.size > 0 && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-white/10 backdrop-blur-2xl border border-white/20 px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-8 animate-in slide-in-from-bottom-8">
           <div className="flex flex-col">
@@ -177,9 +215,20 @@ const HistoryGallery: React.FC<HistoryGalleryProps> = ({ onClose }) => {
           </div>
           <div className="h-8 w-[1px] bg-white/10"></div>
           <div className="flex gap-4">
-            <button onClick={batchDownload} className="bg-accentGreen text-black px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={2}/></svg>
-              打包下载
+            <button 
+              onClick={batchDownload} 
+              disabled={isBatching}
+              className={`bg-accentGreen text-black px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2 ${isBatching ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {isBatching ? (
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={2}/></svg>
+              )}
+              {isBatching ? '正在打包...' : '打包下载'}
             </button>
             <button onClick={batchDelete} className="bg-red-500 text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7" strokeWidth={2}/></svg>

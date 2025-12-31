@@ -61,7 +61,6 @@ export interface GenerationParams {
   intensity: number;
   theme?: string;
   isRandom: boolean;
-  randomizeTheme: boolean;
   quantity: number;
 }
 

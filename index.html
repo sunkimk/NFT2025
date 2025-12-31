@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
@@ -36,26 +37,36 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
       body { 
-        background-color: #000000;
-        color: #ffffff;
+        background-color: #F7F7F7;
+        color: #1A1A1A;
         -webkit-font-smoothing: antialiased;
       }
-      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+      .custom-scrollbar::-webkit-scrollbar { width: 4px; }
       .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.05); border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.1); }
       
       input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none;
-        height: 16px;
-        width: 16px;
+        height: 14px;
+        width: 14px;
         border-radius: 50%;
-        background: #c6ff33;
+        background: #000000;
         cursor: pointer;
-        box-shadow: 0 0 10px rgba(198, 255, 51, 0.4);
+        border: 2px solid #fff;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      }
+
+      @keyframes slideUp {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      .animate-slide-up {
+        animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
       }
     </style>
   </head>
-  <body class="selection:bg-accentGreen selection:text-black">
+  <body class="selection:bg-black selection:text-white">
     <div id="root"></div>
   </body>
 </html>
